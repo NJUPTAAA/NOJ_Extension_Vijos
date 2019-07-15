@@ -1,5 +1,5 @@
 <?php
-namespace App\Babel\Extension\template;//The 'template' should be replaced by the real oj code.
+namespace App\Babel\Extension\vijos;
 
 use App\Babel\Crawl\CrawlerBase;
 use App\Models\ProblemModel;
@@ -11,7 +11,7 @@ use Exception;
 class Crawler extends CrawlerBase
 {
     public $oid=null;
-    public $prefix="Template";//The 'Template' should be replaced by the real oj name.
+    public $prefix="Vijos";
     private $con;
     private $imgi;
     /**
@@ -24,7 +24,7 @@ class Crawler extends CrawlerBase
         $action=isset($conf["action"])?$conf["action"]:'crawl_problem';
         $con=isset($conf["con"])?$conf["con"]:'all';
         $cached=isset($conf["cached"])?$conf["cached"]:false;
-        $this->oid=OJModel::oid('template');//The 'template' should be replaced by the real oj code.
+        $this->oid=OJModel::oid('vijos');
 
         if(is_null($this->oid)) {
             throw new Exception("Online Judge Not Found");
@@ -42,135 +42,158 @@ class Crawler extends CrawlerBase
         // TODO
     }
 
-    private static function find($pattern, $subject)
-    {
-        if (preg_match($pattern, $subject, $matches)) {
-            return $matches[1];
-        }
-        return null;
-    }
-
-    private function getDOM($html, $start, $end)
-    {
-        if ($start===false || $end===false) {
-            throw new Exception("Missing keywords.");
-        }
-        return $this->cacheImage(HtmlDomParser::str_get_html(substr($html, $start, $end-$start), true, true, DEFAULT_TARGET_CHARSET, false));
-    }
-
-    private function getInnertext($html, $start, $end, $tag)
-    {
-        return $this->getDOM($html, $start, $end)->find($tag, 0)->innertext();
-    }
-
-    private function cacheImage($dom)
-    {
-        foreach ($dom->find('img') as $ele) {
-            $src=str_replace('\\', '/', $ele->src);
-            if (strpos($src, '://')!==false) {
-                $url=$src;
-            } elseif ($src[0]=='/') {
-                $url='http://poj.org'.$src;
-            } else {
-                $url='http://poj.org/'.$src;
-            }
-            $res=Requests::get($url, ['Referer' => 'http://poj.org']);
-            $ext=['image/jpeg'=>'.jpg', 'image/png'=>'.png', 'image/gif'=>'.gif', 'image/bmp'=>'.bmp'];
-            if (isset($res->headers['content-type'])) {
-                $cext=$ext[$res->headers['content-type']];
-            } else {
-                $pos=strpos($ele->src, '.');
-                if ($pos===false) {
-                    $cext='';
-                } else {
-                    $cext=substr($ele->src, $pos);
-                }
-            }
-            $fn=$this->con.'_'.($this->imgi++).$cext;
-            $dir=base_path("public/external/poj/img");
-            if (!file_exists($dir)) {
-                mkdir($dir, 0755, true);
-            }
-            file_put_contents(base_path("public/external/poj/img/$fn"), $res->body);
-            $ele->src='/external/poj/img/'.$fn;
-        }
-        return $dom;
-    }
-
     public function crawl($con)
     {
         if ($con=='all') {
             // TODO
             return;
         }
-        $this->con=$con;
-        $this->imgi=1;
-        $problemModel=new ProblemModel();
-        $res=Requests::get("http://poj.org/problem?id={$con}&lang=zh-CN&change=true"); // I have no idea what does `change` refers to
-        if (strpos($res->body, 'Can not find problem')!==false) {
-            header('HTTP/1.1 404 Not Found');
-            die();
+
+        try {
+            $dom=HtmlDomParser::file_get_html('https://vijos.org/p/'.$con, false, null, 0, -1, true, true, DEFAULT_TARGET_CHARSET, false);
+        } catch (Exception $e) {
+            if (strpos($e->getMessage(), '404 Not Found')!==false) {
+                header('HTTP/1.1 404 Not Found');
+                die();
+            }
+            if (strpos($e->getMessage(), '403 Forbidden')!==false) {
+                header('HTTP/1.1 403 Forbidden');
+                die();
+            }
+            throw $e;
         }
-        $this->pro['pcode']=$this->prefix.$con;
+
+        $mainDiv=$dom->find(".section__body", 0);
+
+        $eles=$mainDiv->children();
+        array_push($eles, null);
+        $this->pro['description']=null;
+        $this->pro['input']=null;
+        $this->pro['output']=null;
+        $this->pro['sample']=[];
+        $this->pro['note']=null;
+        $this->pro['sampleDesc']=null;
+        $this->pro['limit']=null;
+        $patterns=[
+            'description' => '<h1>描述</h1>',
+            '_format' => '<h1>格式</h1>',
+            'input' => '<h2>输入格式</h2>',
+            'output' => '<h2>输出格式</h2>',
+            '_sample' => '/^<h1>样例\d+<\/h1>$/u',
+            '__sampleInput' => '/^<h2>样例输入\d+<\/h2>$/u',
+            '__sampleOutput' => '/^<h2>样例输出\d+<\/h2>$/u',
+            'limit' => '<h1>限制</h1>',
+            'note' => '<h1>提示</h1>',
+            'sampleDesc' => '/<h1>样例(说明|解释)<\/h1>|<h2>样例说明1<\/h2>/', // P2036 has <h2>样例说明1</h2>
+            'source' => '<h1>来源</h1>',
+        ];
+        $lastPart='';
+        $content='';
+        $cursample=[];
+        foreach ($eles as $ele) {
+            $html=$ele ? $ele->outertext : null;
+            $match=!$ele;
+            if (!$match) {
+                foreach ($patterns as $key=>$value) {
+                    if ($value[0]!='/' && $html==$value || $value[0]=='/' && preg_match($value, $html)) {
+                        $match=$key;
+                        break;
+                    }
+                }
+            }
+            if (!$lastPart) {
+                if ($match) {
+                    $lastPart=$match;
+                }
+                continue;
+            }
+            if ($match) {
+                if ($lastPart[0]!='_') {
+                    $this->pro[$lastPart]=$content;
+                    $content='';
+                } elseif ($lastPart=='__sampleOutput') { // Assume output always follows by input
+                    array_push($this->pro['sample'], $cursample);
+                    $cursample=[];
+                }
+                $lastPart=$match;
+            } else {
+                if ($lastPart[1]!='_') {
+                    if ($lastPart!='source') {
+                        $content.=$html;
+                    } else {
+                        $content.=$ele->innertext;
+                    }
+                } else { // Code
+                    $code=trim($ele->find('code', 0)->innertext);
+                    if ($lastPart=='__sampleInput') {
+                        if (isset($cursample['sampleInput'])) {
+                            die($con);
+                        }
+                    } else {
+                        if (isset($cursample['sampleOutput'])) {
+                            die($con);
+                        }
+                    }
+                    if (count($ele->children())!=1) {
+                        die($con);
+                    }
+                    if ($lastPart=='__sampleInput') {
+                        $cursample['sample_input']=$code;
+                    } else {
+                        $cursample['sample_output']=$code;
+                    }
+                }
+            }
+            if (!$ele) {
+                break;
+            }
+        }
+
+        $this->pro['time_limit']=1000;
+        $this->pro['memory_limit']=262144;
+        if ($this->pro['sampleDesc']) {
+            $this->pro['note']='<h3>样例说明</h3>'.$this->pro['sampleDesc'].$this->pro['note'];
+        }
+        if ($this->pro['limit']) {
+            $this->pro['note']=$this->pro['limit'].$this->pro['note'];
+            $this->pro['time_limit']=0;
+            $this->pro['memory_limit']=0;
+        }
+
+        $title=$dom->find('.section__header', 0)->find('h1', 0)->innertext;
+        $this->pro['pcode']='VIJ'.$con;
         $this->pro['OJ']=$this->oid;
         $this->pro['contest_id']=null;
         $this->pro['index_id']=$con;
-        $this->pro['origin']="http://poj.org/problem?id={$con}&lang=zh-CN&change=true";
-        $this->pro['title']=self::find('/<div class="ptt" lang=".*?">([\s\S]*?)<\/div>/', $res->body);
-        $this->pro['time_limit']=self::find('/Time Limit:.*?(\d+)MS/', $res->body);
-        $this->pro['memory_limit']=self::find('/Memory Limit:.*?(\d+)K/', $res->body);
-        $this->pro['solved_count']=self::find('/Accepted:.*?(\d+)/', $res->body);
+        $this->pro['origin']='https://vijos.org/p/'.$con;
+        $this->pro['title']=$title;
         $this->pro['input_type']='standard input';
         $this->pro['output_type']='standard output';
-        $descPattern='<p class="pst">Description</p>';
-        $inputPattern='<p class="pst">Input</p>';
-        $outputPattern='<p class="pst">Output</p>';
-        $sampleInputPattern='<p class="pst">Sample Input</p>';
-        $sampleOutputPattern='<p class="pst">Sample Output</p>';
-        $notePattern='<p class="pst">Hint</p>';
-        $sourcePattern='<p class="pst">Source</p>';
-        $endPattern='</td>';
 
-        $pos1=strpos($res->body, $descPattern)+strlen($descPattern);
-        $pos2=strpos($res->body, $inputPattern, $pos1);
-        $this->pro['description']=trim($this->getInnertext($res->body, $pos1, $pos2, 'div'));
-        $pos1=$pos2+strlen($inputPattern);
-        $pos2=strpos($res->body, $outputPattern, $pos1);
-        $this->pro['input']=trim($this->getInnertext($res->body, $pos1, $pos2, 'div'));
-        $pos1=$pos2+strlen($outputPattern);
-        $pos2=strpos($res->body, $sampleInputPattern, $pos1);
-        $this->pro['output']=trim($this->getInnertext($res->body, $pos1, $pos2, 'div'));
-        $pos1=$pos2+strlen($sampleInputPattern);
-        $pos2=strpos($res->body, $sampleOutputPattern, $pos1);
-        $sampleInput=$this->getInnertext($res->body, $pos1, $pos2, 'pre');
-        $pos1=$pos2+strlen($sampleOutputPattern);
-        $pos2=strpos($res->body, $notePattern, $pos1);
-        if ($hasNote=($pos2!==false)) {
-            $sampleOutput=$this->getInnertext($res->body, $pos1, $pos2, 'pre');
-            $pos1=$pos2+strlen($notePattern);
-        }
-        $pos2=strpos($res->body, $sourcePattern, $pos1);
-        $temp=$this->getDOM($res->body, $pos1, $pos2);
-        if ($hasNote) {
-            $this->pro['note']=trim($temp->find('div', 0)->innertext());
-        } else {
-            $sampleOutput=$temp->find('pre', 0)->innertext();
-            $this->pro['note']=null;
-        }
-        $this->pro['sample']=[['sample_input'=>$sampleInput, 'sample_output'=>$sampleOutput]];
-        $pos1=$pos2+strlen($sourcePattern);
-        $pos2=strpos($res->body, $endPattern, $pos1);
-        $this->pro['source']=trim($this->getDOM($res->body, $pos1, $pos2)->find('div', 0)->find('a', 0)->innertext());
+        $this->pro['markdown']=0;
+        $this->pro['tot_score']=100;
+        $this->pro["partial"]=1;
+        $this->pro['source']="P{$con} {$title}";
 
+        $info=$dom->find(".horizontal", 0);
+        preg_match('/<dt>已通过<\/dt>[\s\S]*<dd>(\d+)<\/dd>/', $info->innertext, $match);
+        $this->pro['solved_count']=$match[1];
+
+        $problemModel=new ProblemModel();
         $problem=$problemModel->pid($this->pro['pcode']);
 
         if ($problem) {
             $problemModel->clearTags($problem);
-            $new_pid=$this->updateProblem($this->oid);
+            $new_pid=$this->update_problem($this->oid);
         } else {
-            $new_pid=$this->insertProblem($this->oid);
+            $new_pid=$this->insert_problem($this->oid);
         }
 
-        // $problemModel->addTags($new_pid, $tag); // not present
+        $tags=$info->find('.hasjs--hide', 0);
+        if ($tags) {
+            foreach ($tags->find('a') as $tag) {
+                $problemModel->addTags($new_pid, $tag->innertext);
+            }
+        }
     }
 }

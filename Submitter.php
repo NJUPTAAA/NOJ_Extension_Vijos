@@ -1,5 +1,5 @@
 <?php
-namespace App\Babel\Extension\template;
+namespace App\Babel\Extension\vijos;
 
 use App\Babel\Submit\Curl;
 use App\Models\CompilerModel;
@@ -19,7 +19,7 @@ class Submitter extends Curl
         $this->sub=& $sub;
         $this->post_data=$all_data;
         $judger=new JudgerModel();
-        $this->oid=OJModel::oid('template');
+        $this->oid=OJModel::oid('vijos');
         if(is_null($this->oid)) {
             throw new Exception("Online Judge Not Found");
         }
@@ -29,57 +29,33 @@ class Submitter extends Curl
 
     private function _login()
     {
-        $response=$this->grab_page([
-            "site"=>'http://poj.org',
-            "oj"=>'poj',
-            "handle"=>$this->selectedJudger["handle"]
-        ]);
-        if (strpos($response, 'Log Out')===false) {
+        $response=$this->grab_page('https://vijos.org', 'vijos', [], $this->selectedJudger["handle"]);
+        if (strpos($response, '登出')===false) {
             $params=[
-                'user_id1' => $this->selectedJudger["handle"],
-                'password1' => $this->selectedJudger["password"],
-                'B1' => 'login',
+                'uname' => $this->selectedJudger["handle"],
+                'password' => $this->selectedJudger["password"],
+                'rememberme' => 'on',
             ];
-            $this->login([
-                "url"=>'http://poj.org/login',
-                "data"=>http_build_query($params),
-                "oj"=>'poj',
-                "ret"=>true,
-                "handle"=>$this->selectedJudger["handle"]
-            ]);
+            $this->login('https://vijos.org/login', http_build_query($params), 'vijos', false, $this->selectedJudger["handle"]);
         }
     }
 
     private function _submit()
     {
+        $pid=$this->post_data['iid'];
+        $response=$this->grab_page("https://vijos.org/p/{$pid}/submit", 'vijos', [], $this->selectedJudger["handle"]);
+        preg_match('/"csrf_token":"([0-9a-f]{64})"/', $response, $match);
+
         $params=[
-            'problem_id' => $this->post_data['iid'],
-            'language' => $this->post_data['lang'],
-            'source' => base64_encode($this->post_data["solution"]),
-            'encoded' => 1, // Optional, but sometimes base64 seems smaller than url encode
+            'lang' => $this->post_data['lang'],
+            'code' => $this->post_data["solution"],
+            'csrf_token' => $match[1],
         ];
-
-        $response=$this->post_data([
-            "site"=>"http://poj.org/submit",
-            "data"=>http_build_query($params),
-            "oj"=>"poj",
-            "ret"=>true,
-            "follow"=>false,
-            "returnHeader"=>true,
-            "postJson"=>false,
-            "extraHeaders"=>[],
-            "handle"=>$this->selectedJudger["handle"]
-        ]);
-
-        if (!preg_match('/Location: .*\/status/', $response, $match)) {
-            $this->sub['verdict']='Submission Error';
+        $response=$this->post_data("https://vijos.org/p/{$pid}/submit", http_build_query($params), "vijos", true, false, true, false, [], $this->selectedJudger["handle"]);
+        if (preg_match('/\nLocation: \/records\/(.+)/i', $response, $match)) {
+            $this->sub['remote_id']=$match[1];
         } else {
-            $res=Requests::get('http://poj.org/status?problem_id='.$this->post_data['iid'].'&user_id='.urlencode($this->selectedJudger["handle"]));
-            if (!preg_match('/<tr align=center><td>(\d+)<\/td>/', $res->body, $match)) {
-                $this->sub['verdict']='Submission Error';
-            } else {
-                $this->sub['remote_id']=$match[1];
-            }
+            $this->sub['verdict']='Submission Error';
         }
     }
 

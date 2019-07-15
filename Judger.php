@@ -1,5 +1,5 @@
 <?php
-namespace App\Babel\Extension\template;
+namespace App\Babel\Extension\vijos;
 
 use App\Babel\Submit\Curl;
 use App\Models\SubmissionModel;
@@ -13,69 +13,75 @@ class Judger extends Curl
 
     public $verdict=[
         'Accepted'=>"Accepted",
-        "Presentation Error"=>"Presentation Error",
-        'Time Limit Exceeded'=>"Time Limit Exceed",
-        "Memory Limit Exceeded"=>"Memory Limit Exceed",
         'Wrong Answer'=>"Wrong Answer",
+        'Time Exceeded'=>"Time Limit Exceed",
+        "Memory Exceeded"=>"Memory Limit Exceed",
         'Runtime Error'=>"Runtime Error",
-        'Output Limit Exceeded'=>"Output Limit Exceeded",
         'Compile Error'=>"Compile Error",
+        'System Error'=>"Submission Error",
+        'Canceled'=>"Submission Error",
+        'Unknown Error'=>"Submission Error",
+        'Ignored'=>"Submission Error",
     ];
-    private $model=[];
-    private $template=[];
 
 
     public function __construct()
     {
-        $this->model["submissionModel"]=new SubmissionModel();
-        $this->model["judgerModel"]=new JudgerModel();
+        $this->contestModel=new ContestModel();
+        $this->submissionModel=new SubmissionModel();
     }
 
     public function judge($row)
     {
-        $sub=[];
-
-        if (!isset($this->poj[$row['remote_id']])) {
-            $judgerDetail=$this->model["judgerModel"]->detail($row['jid']);
-            $this->appendPOJStatus($judgerDetail['handle'], $row['remote_id']);
-            if (!isset($this->poj[$row['remote_id']])) {
+        try {
+            $sub=[];
+            $res=Requests::get('https://vijos.org/records/'.$row['remote_id']);
+            preg_match('/<span class="record-status--text \w*">\s*(.*?)\s*<\/span>/', $res->body, $match);
+            $status=$match[1];
+            if (!array_key_exists($status, $verdict)) {
                 return;
             }
-        }
-
-        $status=$this->poj[$row['remote_id']];
-        $sub['verdict']=$this->verdict[$status['verdict']];
-
-        if ($sub['verdict']=='Compile Error') {
-            try {
-                $res=Requests::get('http://poj.org/showcompileinfo?solution_id='.$row['remote_id']);
-                preg_match('/<pre>([\s\S]*)<\/pre>/', $res->body, $match);
+            if ($match[1]=='Compile Error') {
+                preg_match('/<pre class="compiler-text">([\s\S]*?)<\/pre>/', $res->body, $match);
                 $sub['compile_info']=html_entity_decode($match[1], ENT_QUOTES);
-            } catch (Exception $e) {
             }
-        }
+            $sub['verdict']=$verdict[$status];
+            preg_match('/<dt>分数<\/dt>\s*<dd>(\d+)<\/dd>/', $res->body, $match);
+            $isOI=$row['cid'] && $this->contestModel->rule($row['cid'])==2;
+            if ($isOI) {
+                $sub['score']=$match[1];
+                if ($sub['verdict']=="Wrong Answer" && $sub['score']!=0) {
+                    $sub['verdict']='Partially Accepted';
+                }
+            } else {
+                $sub['score']=$match[1]==100 ? 100 : 0;
+            }
+            $sub['remote_id']=$row['remote_id'];
+            if ($sub['verdict']!="Submission Error" && $sub['verdict']!="Compile Error") {
+                $maxtime=0;
+                preg_match_all('/<td class="col--time">(?:&ge;)?(\d+)ms<\/td>/', $res->body, $matches);
+                foreach ($matches[1] as $match) {
+                    if ($match>$maxtime) {
+                        $maxtime=$match;
+                    }
+                }
+                $sub['time']=$maxtime;
+                preg_match('/<dt>峰值内存<\/dt>\s*<dd>(?:&ge;)?([\d.]+) ([KM])iB<\/dd>/', $res->body, $match);
+                $memory=$match[1];
+                if ($match[2]=='M') {
+                    $memory*=1024;
+                }
+                $sub['memory']=intval($memory);
+            } else {
+                $sub['memory']=0;
+                $sub['time']=0;
+            }
 
-        $sub["score"]=$sub['verdict']=="Accepted" ? 1 : 0;
-        $sub['time']=$status['time'];
-        $sub['memory']=$status['memory'];
-        $sub['remote_id']=$row['remote_id'];
-
-        $this->model["submissionModel"]->updateSubmission($row['sid'], $sub);
-    }
-
-    private function appendPOJStatus($judger, $first=null)
-    {
-        if ($first!==null) {
-            $first++;
-        }
-        $res=Requests::get("http://poj.org/status?user_id={$judger}&top={$first}");
-        $rows=preg_match_all('/<tr align=center><td>(\d+)<\/td><td>.*?<\/td><td>.*?<\/td><td>.*?<font color=.*?>(.*?)<\/font>.*?<\/td><td>(\d*)K?<\/td><td>(\d*)(?:MS)?<\/td>/', $res->body, $matches);
-        for ($i=0; $i<$rows; $i++) {
-            $this->poj[$matches[1][$i]]=[
-                'verdict'=>$matches[2][$i],
-                'memory'=>$matches[3][$i] ? $matches[3][$i] : 0,
-                'time'=>$matches[4][$i] ? $matches[4][$i] : 0,
-            ];
+            // $ret[$row['sid']]=[
+            //     "verdict"=>$sub['verdict']
+            // ];
+            $this->submissionModel->updateSubmission($row['sid'], $sub);
+        } catch (Exception $e) {
         }
     }
 }
