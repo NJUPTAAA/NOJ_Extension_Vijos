@@ -41,7 +41,12 @@ class Submitter extends Curl
                 'password' => $this->selectedJudger["password"],
                 'rememberme' => 'on',
             ];
-            $this->login('https://vijos.org/login', http_build_query($params), 'vijos', false, $this->selectedJudger["handle"]);
+            $this->login([
+                'url' => 'https://vijos.org/login',
+                'data' => http_build_query($params),
+                'oj' => 'vijos',
+                'handle' => $this->selectedJudger["handle"],
+            ]);
         }
     }
 
