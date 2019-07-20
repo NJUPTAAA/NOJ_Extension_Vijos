@@ -19,7 +19,7 @@ class Crawler extends CrawlerBase
      *
      * @return Response
      */
-    public function __construct($conf)
+    public function start($conf)
     {
         $action=isset($conf["action"])?$conf["action"]:'crawl_problem';
         $con=isset($conf["con"])?$conf["con"]:'all';
