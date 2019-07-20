@@ -14,6 +14,7 @@ class Crawler extends CrawlerBase
     public $prefix = "Vijos";
     private $con;
     private $imgi;
+    private $incremental;
     /**
      * Initial
      *
@@ -33,6 +34,7 @@ class Crawler extends CrawlerBase
         if ($action == 'judge_level') {
             $this->judge_level();
         } else {
+            $incremental = $action == 'update_problem';
             $this->crawl($con);
         }
     }
@@ -66,6 +68,12 @@ class Crawler extends CrawlerBase
 
     private function __crawl($con)
     {
+        $problemModel = new ProblemModel();
+
+        if ($this->incremental && !empty($problemModel->basic($problemModel->pid('VIJ' . $con)))) {
+            return;
+        }
+
         try {
             $dom = HtmlDomParser::file_get_html('https://vijos.org/p/' . $con, false, null, 0, -1, true, true, DEFAULT_TARGET_CHARSET, false);
         } catch (Exception $e) {
@@ -196,7 +204,6 @@ class Crawler extends CrawlerBase
         preg_match('/<dt>已通过<\/dt>[\s\S]*<dd>(\d+)<\/dd>/', $info->innertext, $match);
         $this->pro['solved_count'] = $match[1];
 
-        $problemModel = new ProblemModel();
         $problem = $problemModel->pid($this->pro['pcode']);
 
         if ($problem) {
