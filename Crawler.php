@@ -74,18 +74,18 @@ class Crawler extends CrawlerBase
             return;
         }
 
+        $updmsg = $this->incremental ? 'Updating' : 'Crawling';
+        $this->line("<fg=yellow>{$updmsg}:   </>VIJ$con");
+
         try {
             $dom = HtmlDomParser::file_get_html('https://vijos.org/p/' . $con, false, null, 0, -1, true, true, DEFAULT_TARGET_CHARSET, false);
         } catch (Exception $e) {
             if (strpos($e->getMessage(), '404 Not Found') !== false) {
-                header('HTTP/1.1 404 Not Found');
-                die();
+                $this->line("\n  <bg=red;fg=white> Exception </> : <fg=yellow>Problem not found.</>\n");
+            } else if (strpos($e->getMessage(), '403 Forbidden') !== false) {
+                $this->line("\n  <bg=red;fg=white> Exception </> : <fg=yellow>Problem forbidden.</>\n");
             }
-            if (strpos($e->getMessage(), '403 Forbidden') !== false) {
-                header('HTTP/1.1 403 Forbidden');
-                die();
-            }
-            throw $e;
+            return false;
         }
 
         $mainDiv = $dom->find(".section__body", 0);
@@ -219,5 +219,8 @@ class Crawler extends CrawlerBase
                 $problemModel->addTags($new_pid, $tag->innertext);
             }
         }
+
+        $donemsg = $this->incremental ? 'Updated' : 'Crawled';
+        $this->line("<fg=green>$donemsg:    </>VIJ$con");
     }
 }
