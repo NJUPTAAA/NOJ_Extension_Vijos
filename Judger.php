@@ -3,6 +3,7 @@ namespace App\Babel\Extension\vijos;
 
 use App\Babel\Submit\Curl;
 use App\Models\SubmissionModel;
+use App\Models\ContestModel;
 use App\Models\JudgerModel;
 use Requests;
 use Exception;
