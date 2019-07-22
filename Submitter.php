@@ -52,6 +52,7 @@ class Submitter extends Curl
 
     private function _submit()
     {
+        $this->sub['jid'] = $this->selectedJudger["jid"];
         $pid = $this->post_data['iid'];
         $response = $this->grab_page([
             'site' => "https://vijos.org/p/{$pid}/submit",
