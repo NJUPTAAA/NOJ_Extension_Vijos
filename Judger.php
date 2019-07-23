@@ -39,14 +39,14 @@ class Judger extends Curl
             $res=Requests::get('https://vijos.org/records/'.$row['remote_id']);
             preg_match('/<span class="record-status--text \w*">\s*(.*?)\s*<\/span>/', $res->body, $match);
             $status=$match[1];
-            if (!array_key_exists($status, $verdict)) {
+            if (!array_key_exists($status, $this->verdict)) {
                 return;
             }
             if ($match[1]=='Compile Error') {
                 preg_match('/<pre class="compiler-text">([\s\S]*?)<\/pre>/', $res->body, $match);
                 $sub['compile_info']=html_entity_decode($match[1], ENT_QUOTES);
             }
-            $sub['verdict']=$verdict[$status];
+            $sub['verdict']=$this->verdict[$status];
             preg_match('/<dt>分数<\/dt>\s*<dd>(\d+)<\/dd>/', $res->body, $match);
             $isOI=$row['cid'] && $this->contestModel->rule($row['cid'])==2;
             if ($isOI) {
