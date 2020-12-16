@@ -6,7 +6,7 @@
     "description": "Vijos interface for NOJ",
     "license": "MIT",
     "repository":"https://github.com/NJUPTAAA/NOJ_Extension_Vijos",
-    "version":"0.1.5",
+    "version":"0.1.7",
     "website":"https://vijos.org/",
     "custom":{
         "css":"resources/custom.css"
