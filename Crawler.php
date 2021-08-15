@@ -61,7 +61,7 @@ class Crawler extends CrawlerBase
         for ($i = 0; $i < $count; ++$i) {
             $this->__crawl($matches[1][$i]);
         }
-        if (preg_match('/href="?page=(\d+)">末页/', $res->body, $match)) {
+        if (preg_match('/page=(\d+)">末页/', $res->body, $match)) {
             $this->lastPage = $match[1];
         }
     }
