@@ -15,6 +15,7 @@ class Crawler extends CrawlerBase
     private $con;
     private $imgi;
     private $incremental;
+    private $range;
     /**
      * Initial
      *
@@ -22,9 +23,10 @@ class Crawler extends CrawlerBase
      */
     public function start($conf)
     {
-        $action = isset($conf["action"]) ? $conf["action"] : 'crawl_problem';
-        $con = isset($conf["con"]) ? $conf["con"] : 'all';
-        $cached = isset($conf["cached"]) ? $conf["cached"] : false;
+        $action = $conf["action"];
+        $con = $conf["con"];
+        $cached = $conf["cached"];
+        $this->range = $conf["range"];
         $this->oid = OJModel::oid('vijos');
 
         if (is_null($this->oid)) {
@@ -59,7 +61,9 @@ class Crawler extends CrawlerBase
         $res = Requests::get('https://vijos.org/p?page=' . $page);
         $count = preg_match_all('/href="\/p\/(\d+)"/', $res->body, $matches);
         for ($i = 0; $i < $count; ++$i) {
-            $this->__crawl($matches[1][$i]);
+            if ($this->inRange($matches[1][$i], $this->range)!==false) {
+                $this->__crawl($matches[1][$i]);
+            }
         }
         if (preg_match('/page=(\d+)">末页/', $res->body, $match)) {
             $this->lastPage = $match[1];
@@ -68,6 +72,8 @@ class Crawler extends CrawlerBase
 
     private function __crawl($con)
     {
+        $this->con="VIJ$con";
+        $this->imgi=1;
         $problemModel = new ProblemModel();
 
         if ($this->incremental && !empty($problemModel->basic($problemModel->pid('VIJ' . $con)))) {
@@ -185,6 +191,8 @@ class Crawler extends CrawlerBase
             $this->pro['memory_limit'] = 0;
         }
 
+        $this->cacheImages(['description','input','output','note']); // caching images to locale storage
+
         $title = $dom->find('.section__header', 0)->find('h1', 0)->innertext;
         $this->pro['pcode'] = 'VIJ' . $con;
         $this->pro['OJ'] = $this->oid;
@@ -222,5 +230,66 @@ class Crawler extends CrawlerBase
 
         $donemsg = $this->incremental ? 'Updated' : 'Crawled';
         $this->line("<fg=green>$donemsg:    </>VIJ$con");
+    }
+
+    private function cacheImages($fields)
+    {
+        foreach($fields as $field) {
+            if(filled($this->pro[$field])) {
+                $this->pro[$field]=$this->cacheImage(HtmlDomParser::str_get_html($this->pro[$field], true, true, DEFAULT_TARGET_CHARSET, false));
+                if($this->pro[$field]===false) {
+                    $this->pro[$field]=null;
+                }
+            }
+        }
+    }
+
+    private function cacheImage($dom)
+    {
+        if(!$dom) return $dom;
+        foreach ($dom->find('img') as $ele) {
+            $src = $ele->src;
+            if (strpos($src, '://') !== false) {
+                $url=$src;
+            } elseif ($src[0]=='/') {
+                $url='https://vijos.org'.$src;
+            } else {
+                $url='https://vijos.org/'.$src;
+            }
+            $res=Requests::get($url, ['Referer' => 'https://vijos.org']);
+            $ext=['image/jpeg'=>'.jpg', 'image/png'=>'.png', 'image/gif'=>'.gif', 'image/bmp'=>'.bmp'];
+            if (isset($res->headers['content-type'])) {
+                $cext=$ext[$res->headers['content-type']];
+            } else {
+                $pos=strpos($ele->src, '.');
+                if ($pos===false) {
+                    $cext='';
+                } else {
+                    $cext=substr($ele->src, $pos);
+                }
+            }
+            $fn=$this->con.'_'.($this->imgi++).$cext;
+            $dir=base_path("public/external/vijos/img");
+            if (!file_exists($dir)) {
+                mkdir($dir, 0755, true);
+            }
+            file_put_contents(base_path("public/external/vijos/img/$fn"), $res->body);
+            $ele->src='/external/vijos/img/'.$fn;
+        }
+        return $dom;
+    }
+
+    private function inRange($needle, $haystack)
+    {
+        $options=[];
+        if(!is_null($haystack[0])) {
+            $options['min_range']=$haystack[0];
+        }
+        if(!is_null($haystack[1])) {
+            $options['max_range']=$haystack[1];
+        }
+        return filter_var($needle, FILTER_VALIDATE_INT, [
+            'options' => $options
+        ]);
     }
 }
