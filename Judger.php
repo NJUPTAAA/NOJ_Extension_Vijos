@@ -37,7 +37,7 @@ class Judger extends Curl
         try {
             $sub = [];
             $res = $this->grab_page([
-                'site' => 'https://vijos.org/records/'.$row['remote_id'],
+                'site' => 'https://vijos.org/records/'.trim($row['remote_id']),
                 'oj' => 'vijos',
             ]);
             preg_match('/<span class="record-status--text \w*">\s*(.*?)\s*<\/span>/', $res, $match);
