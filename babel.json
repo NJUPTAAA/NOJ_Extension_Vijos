@@ -1,23 +1,26 @@
 {
-    "name":"Vijos",
-    "code":"vijos",
-    "icon":"resources/vijos@2x.png",
-    "type":"virtual-judge",
+    "name": "Vijos",
+    "code": "vijos",
+    "icon": "resources/vijos@2x.png",
+    "type": "virtual-judge",
     "description": "Vijos interface for NOJ",
     "license": "MIT",
-    "repository":"https://github.com/NJUPTAAA/NOJ_Extension_Vijos",
-    "version":"0.2.1",
-    "website":"https://vijos.org/",
-    "custom":{
-        "css":"resources/custom.css"
+    "repository": "https://github.com/NJUPTAAA/NOJ_Extension_Vijos",
+    "version": "0.2.2",
+    "website": "https://vijos.org/",
+    "custom": {
+        "css": "resources/custom.css"
     },
-    "provider":{
-        "judger":"Judger",
-        "crawler":"Crawler",
-        "submitter":"Submitter",
-        "installer":"Installer"
+    "provider": {
+        "judger": "Judger",
+        "crawler": "Crawler",
+        "submitter": "Submitter",
+        "installer": "Installer"
     },
-    "require":{
-        "NOJ":"^0.5.0"
+    "namespace": {
+        "vijos": "VIJ*"
+    },
+    "require": {
+        "NOJ": "^0.17.2"
     }
 }

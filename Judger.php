@@ -36,7 +36,9 @@ class Judger extends Curl
     {
         try {
             $sub=[];
-            $res=Requests::get('https://vijos.org/records/'.$row['remote_id']);
+            $res=Requests::get('https://vijos.org/records/'.$row['remote_id'], ['Referer' => 'https://vijos.org'], [
+                'verify' => babel_path("Cookies/cacert.pem")
+            ]);
             preg_match('/<span class="record-status--text \w*">\s*(.*?)\s*<\/span>/', $res->body, $match);
             $status=$match[1];
             if (!array_key_exists($status, $this->verdict)) {
@@ -78,9 +80,6 @@ class Judger extends Curl
                 $sub['time']=0;
             }
 
-            // $ret[$row['sid']]=[
-            //     "verdict"=>$sub['verdict']
-            // ];
             $this->submissionModel->updateSubmission($row['sid'], $sub);
         } catch (Exception $e) {
         }
