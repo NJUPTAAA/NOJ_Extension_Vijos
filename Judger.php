@@ -83,7 +83,7 @@ class Judger extends Curl
 
             $this->submissionModel->updateSubmission($row['sid'], $sub);
         } catch (Exception $e) {
-            Log::alert($e);
+            throw $e;
         }
     }
 }
