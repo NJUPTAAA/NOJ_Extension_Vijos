@@ -35,21 +35,22 @@ class Judger extends Curl
     public function judge($row)
     {
         try {
-            $sub=[];
-            $res=Requests::get('https://vijos.org/records/'.$row['remote_id'], ['Referer' => 'https://vijos.org'], [
-                'verify' => babel_path("Cookies/cacert.pem")
+            $sub = [];
+            $res = $this->grab_page([
+                'site' => 'https://vijos.org/records/'.$row['remote_id'],
+                'oj' => 'vijos',
             ]);
-            preg_match('/<span class="record-status--text \w*">\s*(.*?)\s*<\/span>/', $res->body, $match);
+            preg_match('/<span class="record-status--text \w*">\s*(.*?)\s*<\/span>/', $res, $match);
             $status=$match[1];
             if (!array_key_exists($status, $this->verdict)) {
                 return;
             }
             if ($match[1]=='Compile Error') {
-                preg_match('/<pre class="compiler-text">([\s\S]*?)<\/pre>/', $res->body, $match);
+                preg_match('/<pre class="compiler-text">([\s\S]*?)<\/pre>/', $res, $match);
                 $sub['compile_info']=html_entity_decode($match[1], ENT_QUOTES);
             }
             $sub['verdict']=$this->verdict[$status];
-            preg_match('/<dt>分数<\/dt>\s*<dd>(\d+)<\/dd>/', $res->body, $match);
+            preg_match('/<dt>分数<\/dt>\s*<dd>(\d+)<\/dd>/', $res, $match);
             $isOI=$row['cid'] && $this->contestModel->rule($row['cid'])==2;
             if ($isOI) {
                 $sub['score']=$match[1];
@@ -62,14 +63,14 @@ class Judger extends Curl
             $sub['remote_id']=$row['remote_id'];
             if ($sub['verdict']!="Submission Error" && $sub['verdict']!="Compile Error") {
                 $maxtime=0;
-                preg_match_all('/<td class="col--time">(?:&ge;)?(\d+)ms<\/td>/', $res->body, $matches);
+                preg_match_all('/<td class="col--time">(?:&ge;)?(\d+)ms<\/td>/', $res, $matches);
                 foreach ($matches[1] as $match) {
                     if ($match>$maxtime) {
                         $maxtime=$match;
                     }
                 }
                 $sub['time']=$maxtime;
-                preg_match('/<dt>峰值内存<\/dt>\s*<dd>(?:&ge;)?([\d.]+) ([KM])iB<\/dd>/', $res->body, $match);
+                preg_match('/<dt>峰值内存<\/dt>\s*<dd>(?:&ge;)?([\d.]+) ([KM])iB<\/dd>/', $res, $match);
                 $memory=$match[1];
                 if ($match[2]=='M') {
                     $memory*=1024;
@@ -82,6 +83,7 @@ class Judger extends Curl
 
             $this->submissionModel->updateSubmission($row['sid'], $sub);
         } catch (Exception $e) {
+            Log::alert($e);
         }
     }
 }
